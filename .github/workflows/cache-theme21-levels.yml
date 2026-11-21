@@ -1,0 +1,55 @@
+name: Cache Tema 21 anatomy level illustrations
+on:
+  push:
+    paths:
+      - '.github/workflows/cache-theme21-levels.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download original high-resolution open-license spinal injury diagrams
+        run: |
+          python3 - <<'PY'
+          import urllib.request, pathlib
+          files=[
+          ("sci_complications_levels.jpg","SCI_complications_by_level.jpg",100000),
+          ("neurological_levels_paralysis.png","Neurological_Levels_%26_Types_of_Paralysis.png",100000)
+          ]
+          out=pathlib.Path("assets/tema21/anatomia");out.mkdir(parents=True,exist_ok=True)
+          good=0
+          for dest,source,minsize in files:
+            urls=[
+              "https://commons.wikimedia.org/wiki/Special:Redirect/file/"+source,
+              "https://commons.wikimedia.org/wiki/Special:FilePath/"+source,
+              "https://upload.wikimedia.org/wikipedia/commons/special/filepath/"+source,
+            ]
+            for url in urls:
+              try:
+                req=urllib.request.Request(url,headers={"User-Agent":"MedbookCarolEducationalNotebook/1.0 (non-commercial scientific attribution; contact github.com/medbookcarol/online)","Accept":"image/*"})
+                with urllib.request.urlopen(req,timeout=45) as r:
+                  data=r.read()
+                  ct=r.headers.get("content-type","")
+                if len(data)<minsize or not(data.startswith(b"\xff\xd8") or data.startswith(b"\x89PNG")):
+                  print("NOT_IMAGE",dest,len(data),ct,url,flush=True)
+                  continue
+                (out/dest).write_bytes(data)
+                print("SAVED",dest,len(data),url,flush=True)
+                good+=1
+                break
+              except Exception as exc:
+                print("FETCH ERROR",dest,str(exc),url,flush=True)
+          if good<1:raise SystemExit("At least one local high-resolution diagram required")
+          PY
+      - name: Commit source drawings
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/tema21/anatomia
+          if ! git diff --cached --quiet; then
+            git commit -m "Cache high resolution spinal cord injury levels diagrams"
+            git push
+          fi
