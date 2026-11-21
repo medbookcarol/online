@@ -1,0 +1,50 @@
+name: Cache Tema 21 radiology images
+on:
+  push:
+    paths:
+      - '.github/workflows/cache-theme21-images.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  cache-radiology:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download original CC-BY clinical radiology figures
+        run: |
+          python3 - <<'PY'
+          import urllib.request, pathlib, sys
+          images = {
+            "fig01_xray.jpg": "https://cdn.ncbi.nlm.nih.gov/pmc/blobs/f0df/10722344/0db69116ac88/cureus-0015-0000048846-i01.jpg",
+            "fig02_ct.jpg": "https://cdn.ncbi.nlm.nih.gov/pmc/blobs/f0df/10722344/0db69116ac88/cureus-0015-0000048846-i02.jpg",
+            "fig03_mri.jpg": "https://cdn.ncbi.nlm.nih.gov/pmc/blobs/f0df/10722344/0db69116ac88/cureus-0015-0000048846-i03.jpg",
+            "fig05_postop.jpg": "https://cdn.ncbi.nlm.nih.gov/pmc/blobs/f0df/10722344/0db69116ac88/cureus-0015-0000048846-i05.jpg"
+          }
+          output=pathlib.Path("assets/tema21/exames")
+          output.mkdir(parents=True, exist_ok=True)
+          good=[]
+          for fn,url in images.items():
+            try:
+              req=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0 (educational use; GitHub Pages)"})
+              with urllib.request.urlopen(req, timeout=25) as resp:
+                data=resp.read()
+                ct=resp.headers.get("Content-Type","")
+              if not data.startswith(bytes.fromhex("ffd8ff")) or len(data)<6000:
+                print("SKIP",fn,"size",len(data),"content-type",ct); continue
+              (output/fn).write_bytes(data)
+              good.append(fn)
+              print("OK",fn,len(data))
+            except Exception as exc:
+              print("ERROR",fn,exc)
+          if len(good)<2: sys.exit("Could not cache at least 2 figures")
+          PY
+      - name: Commit cached images
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/tema21/exames
+          if ! git diff --cached --quiet; then
+            git commit -m "Cache Tema 21 clinical CT/MRI illustrations locally"
+            git push
+          fi
