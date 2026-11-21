@@ -11,40 +11,50 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download original CC-BY clinical radiology figures
+      - name: Download official PMC open-access article package and extract figures
         run: |
           python3 - <<'PY'
-          import urllib.request, pathlib, sys
-          images = {
-            "fig01_xray.jpg": "https://cdn.ncbi.nlm.nih.gov/pmc/blobs/f0df/10722344/0db69116ac88/cureus-0015-0000048846-i01.jpg",
-            "fig02_ct.jpg": "https://cdn.ncbi.nlm.nih.gov/pmc/blobs/f0df/10722344/0db69116ac88/cureus-0015-0000048846-i02.jpg",
-            "fig03_mri.jpg": "https://cdn.ncbi.nlm.nih.gov/pmc/blobs/f0df/10722344/0db69116ac88/cureus-0015-0000048846-i03.jpg",
-            "fig05_postop.jpg": "https://cdn.ncbi.nlm.nih.gov/pmc/blobs/f0df/10722344/0db69116ac88/cureus-0015-0000048846-i05.jpg"
-          }
-          output=pathlib.Path("assets/tema21/exames")
-          output.mkdir(parents=True, exist_ok=True)
+          import urllib.request, urllib.parse, tarfile, io, re, pathlib, xml.etree.ElementTree as ET, sys
+          article="PMC10722344"
+          api="https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi?id="+article
+          hdr={"User-Agent":"MedbookCarol-Citation-Research/1.0 (educational)","Accept":"*/*"}
+          def download(url):
+            with urllib.request.urlopen(urllib.request.Request(url,headers=hdr), timeout=45) as resp:
+              return resp.read()
+          xml=download(api).decode("utf-8")
+          print("OA API:",xml[:550])
+          root=ET.fromstring(xml)
+          links=[x.attrib.get("href","") for x in root.findall(".//link") if x.attrib.get("format")=="tgz"]
+          if not links: sys.exit("No PMC OA tgz URL")
+          url=links[0].replace("ftp://ftp.ncbi.nlm.nih.gov/","https://ftp.ncbi.nlm.nih.gov/")
+          print("OPEN PACKAGE",url)
+          data=download(url)
+          print("ARCHIVE BYTES",len(data))
+          archive=tarfile.open(fileobj=io.BytesIO(data),mode="r:*")
+          members=[m for m in archive.getmembers() if m.isfile() and re.search(r'\.(jpg|jpeg|png)$',m.name,re.I)]
+          print("IMAGE FILES",[(m.name,m.size) for m in members][:40])
+          out=pathlib.Path("assets/tema21/exames");out.mkdir(parents=True,exist_ok=True)
           good=[]
-          for fn,url in images.items():
-            try:
-              req=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0 (educational use; GitHub Pages)"})
-              with urllib.request.urlopen(req, timeout=25) as resp:
-                data=resp.read()
-                ct=resp.headers.get("Content-Type","")
-              if not data.startswith(bytes.fromhex("ffd8ff")) or len(data)<6000:
-                print("SKIP",fn,"size",len(data),"content-type",ct); continue
-              (output/fn).write_bytes(data)
-              good.append(fn)
-              print("OK",fn,len(data))
-            except Exception as exc:
-              print("ERROR",fn,exc)
-          if len(good)<2: sys.exit("Could not cache at least 2 figures")
+          targets={1:"fig01_xray",2:"fig02_ct",3:"fig03_mri",5:"fig05_postop"}
+          for n,name in targets.items():
+            candidates=[m for m in members if re.search(r'(?:i0?'+str(n)+r'|f0?'+str(n)+r')\.(jpg|jpeg|png)$',m.name,re.I)]
+            if not candidates:
+              print("MISSING",n);continue
+            member=max(candidates,key=lambda m:m.size)
+            b=archive.extractfile(member).read()
+            if len(b)<5000:continue
+            ext=pathlib.Path(member.name).suffix.lower()
+            (out/(name+ext)).write_bytes(b)
+            good.append(name+ext)
+            print("STORED",name+ext,len(b))
+          if len(good)<3:sys.exit("Could not extract at least 3 images")
           PY
-      - name: Commit cached images
+      - name: Commit verified local image files
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add assets/tema21/exames
           if ! git diff --cached --quiet; then
-            git commit -m "Cache Tema 21 clinical CT/MRI illustrations locally"
+            git commit -m "Host Tema 21 open access clinical CT MRI images within website"
             git push
           fi
