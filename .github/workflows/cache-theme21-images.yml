@@ -11,43 +11,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download official PMC open-access article package and extract figures
+      - name: Download CC BY figures from official PMC AWS Open Data service
         run: |
           python3 - <<'PY'
-          import urllib.request, urllib.parse, tarfile, io, re, pathlib, xml.etree.ElementTree as ET, sys
-          article="PMC10722344"
-          api="https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi?id="+article
-          hdr={"User-Agent":"MedbookCarol-Citation-Research/1.0 (educational)","Accept":"*/*"}
-          def download(url):
-            with urllib.request.urlopen(urllib.request.Request(url,headers=hdr), timeout=45) as resp:
-              return resp.read()
-          xml=download(api).decode("utf-8")
-          print("OA API:",xml[:550])
+          import urllib.request,urllib.parse,xml.etree.ElementTree as ET,re,pathlib,sys,json
+          host="https://pmc-oa-opendata.s3.amazonaws.com/"
+          version="PMC10722344.1/"
+          def get(url):
+            req=urllib.request.Request(url,headers={"User-Agent":"MedbookCarol-ScientificImageResearch/1.0"})
+            with urllib.request.urlopen(req,timeout=35) as res:return res.read()
+          path=host+"?list-type=2&prefix="+urllib.parse.quote(version)
+          xml=get(path).decode()
           root=ET.fromstring(xml)
-          links=[x.attrib.get("href","") for x in root.findall(".//link") if x.attrib.get("format")=="tgz"]
-          if not links: sys.exit("No PMC OA tgz URL")
-          url=links[0].replace("ftp://ftp.ncbi.nlm.nih.gov/","https://ftp.ncbi.nlm.nih.gov/")
-          print("OPEN PACKAGE",url)
-          data=download(url)
-          print("ARCHIVE BYTES",len(data))
-          archive=tarfile.open(fileobj=io.BytesIO(data),mode="r:*")
-          members=[m for m in archive.getmembers() if m.isfile() and re.search(r'\.(jpg|jpeg|png)$',m.name,re.I)]
-          print("IMAGE FILES",[(m.name,m.size) for m in members][:40])
-          out=pathlib.Path("assets/tema21/exames");out.mkdir(parents=True,exist_ok=True)
-          good=[]
-          targets={1:"fig01_xray",2:"fig02_ct",3:"fig03_mri",5:"fig05_postop"}
-          for n,name in targets.items():
-            candidates=[m for m in members if re.search(r'(?:i0?'+str(n)+r'|f0?'+str(n)+r')\.(jpg|jpeg|png)$',m.name,re.I)]
-            if not candidates:
+          ns={"s":"http://s3.amazonaws.com/doc/2006-03-01/"}
+          keys=[x.text for x in root.findall(".//s:Contents/s:Key",ns)]
+          print("S3 KEYS:",keys)
+          if not keys:sys.exit("No files at article version")
+          output=pathlib.Path("assets/tema21/exames");output.mkdir(parents=True,exist_ok=True)
+          choices={1:"fig01_xray",2:"fig02_ct",3:"fig03_mri",5:"fig05_postop"}
+          count=0
+          for n,name in choices.items():
+            hits=[key for key in keys if re.search(r"(?:-i|_i|f)0?"+str(n)+r"\.(?:jpg|jpeg|png|gif|webp)$",key,re.I)]
+            if not hits:
               print("MISSING",n);continue
-            member=max(candidates,key=lambda m:m.size)
-            b=archive.extractfile(member).read()
-            if len(b)<5000:continue
-            ext=pathlib.Path(member.name).suffix.lower()
-            (out/(name+ext)).write_bytes(b)
-            good.append(name+ext)
-            print("STORED",name+ext,len(b))
-          if len(good)<3:sys.exit("Could not extract at least 3 images")
+            key=hits[0];b=get(host+urllib.parse.quote(key,safe="/"))
+            ext=pathlib.Path(key).suffix.lower()
+            if len(b)<4000:continue
+            filename=name+ext
+            (output/filename).write_bytes(b)
+            print("SAVED",filename,len(b),key)
+            count+=1
+          if count<3:sys.exit("Missing three usable figures")
           PY
       - name: Commit verified local image files
         run: |
@@ -55,6 +49,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add assets/tema21/exames
           if ! git diff --cached --quiet; then
-            git commit -m "Host Tema 21 open access clinical CT MRI images within website"
+            git commit -m "Host Tema 21 scientific CT MRI images locally"
             git push
           fi
