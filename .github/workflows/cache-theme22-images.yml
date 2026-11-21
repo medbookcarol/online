@@ -34,7 +34,7 @@ jobs:
               keys=[k.text for k in root.findall(".//s:Contents/s:Key",ns)]
               print("ARTICLE",article,"KEYS",keys[:40],flush=True)
               for num,name in figures.items():
-                matches=[key for key in keys if re.search(r"(?:-i|_i|f)0?"+str(num)+r"\.(?:jpg|jpeg|png|webp)$",key,re.I)]
+                matches=[key for key in keys if re.search(r"(?:-g|_g|-i|_i|-f|_f|g|f|i)0{0,2}"+str(num)+r"\.(?:jpg|jpeg|png|webp)$",key,re.I)]
                 if not matches:
                   print("FIG MISSING",article,num,flush=True);continue
                 key=max(matches,key=lambda x:("large" in x.lower(),len(x)))
