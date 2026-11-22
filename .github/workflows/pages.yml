@@ -6,6 +6,7 @@ on:
     paths:
       - 'index.html'
       - 'ficha23.html'
+      - 'ficha24.html'
       - 'assets/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
