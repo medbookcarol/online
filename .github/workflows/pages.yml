@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'index.html'
+      - 'caderno-areas.html'
+      - 'temas-quentes.html'
       - 'ficha23.html'
       - 'ficha24.html'
       - 'ficha25.html'
