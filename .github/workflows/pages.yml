@@ -13,6 +13,7 @@ on:
       - 'ficha28.html'
       - 'ficha29.html'
       - 'ficha30.html'
+      - 'ficha31.html'
       - 'assets/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
